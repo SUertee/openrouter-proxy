@@ -52,7 +52,7 @@ async def proxy(
     path: str,
     request: Request,
     x_proxy_token: str | None = Header(default=None),
-) -> JSONResponse | StreamingResponse:
+):
     settings = _load_settings()
 
     if x_proxy_token != settings["proxy_token"]:
