@@ -33,6 +33,17 @@ def _load_settings() -> dict:
     }
 
 
+def _extract_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    value = authorization.strip()
+    if not value:
+        return None
+    if value.lower().startswith("bearer "):
+        return value[7:].strip() or None
+    return None
+
+
 def _forward_stream(resp: requests.Response) -> Iterator[bytes]:
     try:
         for chunk in resp.iter_content(chunk_size=8192):
@@ -52,10 +63,11 @@ async def proxy(
     path: str,
     request: Request,
     x_proxy_token: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
 ):
     settings = _load_settings()
-
-    if x_proxy_token != settings["proxy_token"]:
+    token = x_proxy_token or _extract_bearer_token(authorization)
+    if token != settings["proxy_token"]:
         raise HTTPException(status_code=401, detail="unauthorized")
 
     upstream_url = f"{settings['upstream_base_url']}/{path.lstrip('/')}"
