@@ -48,6 +48,16 @@ docker compose logs -f tokyo-openrouter-proxy
 LOG_LEVEL=DEBUG
 ```
 
+如需加速 OpenWebUI 模型页（只返回少量常用模型），在 `.env` 设置：
+
+```bash
+MODEL_FAMILIES=gemini,claude,openai,llama
+MODEL_LIMIT_PER_FAMILY=2
+MODELS_CACHE_TTL_SEC=600
+```
+
+说明：代理会拦截 `GET /proxy/api/v1/models`，仅返回上述四类模型中每类最新 N 个，并做缓存。
+
 上海调用地址：
 
 `https://<tokyo-domain>/proxy/api/v1/chat/completions`
