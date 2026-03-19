@@ -21,6 +21,21 @@ cp .env.example .env
 uvicorn tokyo_llm_proxy:app --host 0.0.0.0 --port 8787
 ```
 
+或使用 Docker 常驻运行（推荐）：
+
+```bash
+docker compose up -d --build
+```
+
+常用命令：
+
+```bash
+docker compose ps
+docker compose logs -f
+docker compose restart
+docker compose down
+```
+
 上海调用地址：
 
 `https://<tokyo-domain>/proxy/api/v1/chat/completions`
