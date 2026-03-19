@@ -36,6 +36,18 @@ docker compose restart
 docker compose down
 ```
 
+查看调用日志（状态、耗时、模型）：
+
+```bash
+docker compose logs -f tokyo-openrouter-proxy
+```
+
+如需更详细日志，在 `.env` 设置：
+
+```bash
+LOG_LEVEL=DEBUG
+```
+
 上海调用地址：
 
 `https://<tokyo-domain>/proxy/api/v1/chat/completions`

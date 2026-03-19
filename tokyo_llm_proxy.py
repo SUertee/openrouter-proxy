@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
+import uuid
 from typing import Iterator
 
 import requests
@@ -11,6 +14,13 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from env_loader import load_env_file
 
 load_env_file()
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger("tokyo-llm-proxy")
 
 app = FastAPI(title="Tokyo LLM Proxy", version="0.1.0")
 
@@ -66,8 +76,11 @@ async def proxy(
     authorization: str | None = Header(default=None),
 ):
     settings = _load_settings()
+    request_id = uuid.uuid4().hex[:8]
+    started = time.perf_counter()
     token = x_proxy_token or _extract_bearer_token(authorization)
     if token != settings["proxy_token"]:
+        logger.warning("proxy_unauthorized request_id=%s path=%s", request_id, path)
         raise HTTPException(status_code=401, detail="unauthorized")
 
     upstream_url = f"{settings['upstream_base_url']}/{path.lstrip('/')}"
@@ -90,12 +103,23 @@ async def proxy(
         params = dict(request.query_params)
 
         stream_enabled = False
+        model = ""
         if raw_body:
             try:
                 payload = json.loads(raw_body)
                 stream_enabled = bool(payload.get("stream", False))
+                model = str(payload.get("model", ""))
             except json.JSONDecodeError:
                 stream_enabled = False
+
+        logger.info(
+            "proxy_request request_id=%s method=%s path=%s model=%s stream=%s",
+            request_id,
+            method,
+            path,
+            model or "-",
+            stream_enabled,
+        )
 
         resp = requests.request(
             method=method,
@@ -112,6 +136,14 @@ async def proxy(
             passthrough_headers = {}
             if request.headers.get("accept-encoding"):
                 passthrough_headers["Content-Encoding"] = resp.headers.get("content-encoding", "")
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            logger.info(
+                "proxy_stream_open request_id=%s status=%s model=%s elapsed_ms=%.1f",
+                request_id,
+                resp.status_code,
+                model or "-",
+                elapsed_ms,
+            )
             return StreamingResponse(
                 _forward_stream(resp),
                 status_code=resp.status_code,
@@ -120,13 +152,37 @@ async def proxy(
             )
 
         content_type = resp.headers.get("content-type", "")
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        logger.info(
+            "proxy_response request_id=%s status=%s model=%s elapsed_ms=%.1f",
+            request_id,
+            resp.status_code,
+            model or "-",
+            elapsed_ms,
+        )
         if "application/json" in content_type:
             return JSONResponse(status_code=resp.status_code, content=resp.json())
 
         return JSONResponse(status_code=resp.status_code, content={"raw": resp.text})
     except requests.Timeout as exc:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        logger.error(
+            "proxy_timeout request_id=%s path=%s elapsed_ms=%.1f error=%s",
+            request_id,
+            path,
+            elapsed_ms,
+            exc,
+        )
         raise HTTPException(status_code=504, detail=f"upstream timeout: {exc}") from exc
     except requests.RequestException as exc:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        logger.error(
+            "proxy_upstream_error request_id=%s path=%s elapsed_ms=%.1f error=%s",
+            request_id,
+            path,
+            elapsed_ms,
+            exc,
+        )
         raise HTTPException(status_code=502, detail=f"upstream request failed: {exc}") from exc
 
 
